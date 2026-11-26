@@ -238,13 +238,21 @@ impl<'a, P: Value + Hash + Debug + 'static> DockColumn<'a, P> {
         self.show_groups_in(ui, Some(rect), view)
     }
 
+    /// Where the bar takes room: none for a dock column whose bar would be empty. A column with no double arrow and a
+    /// single group has nothing to show there (the group's own header moves it), so its group starts at the top.
+    fn plan_bar(&self) -> ColumnBar {
+        let empty = self.bar == ColumnBar::Own && !self.arrow.shown() && self.column.groups.len() <= 1;
+        if empty { ColumnBar::Window } else { self.bar }
+    }
+
     fn show_groups_in(
         self,
         ui: &mut Ui,
         at: Option<Rect>,
         mut view: impl FnMut(&Group<P>, Rect, &mut Ui, &mut BodyCx<'_>) + 'a,
     ) -> DockColumnOutput<P> {
-        let (column, spec, auto_collapse, edge, own, arrow) = (self.column, self.spec, self.auto_collapse, self.edge, self.bar, self.arrow);
+        let own = self.plan_bar();
+        let (column, spec, auto_collapse, edge, arrow) = (self.column, self.spec, self.auto_collapse, self.edge, self.arrow);
         let mut bar = BarRecord::default();
         let shown = &mut bar;
         let body = move |ui: &mut Ui, body: &mut BodyCx<'_>| {
@@ -401,7 +409,7 @@ impl<P: Value + Debug + Hash + 'static> Component for DockColumn<'_, P> {
     /// column in a floating window has the group dividers only.
     fn parts(&mut self, rect: Rect, cx: &mut PartsCx<'_, Self>) {
         let sizes = cx.style.sizes;
-        let plan = column_plan(self.column, self.spec, rect, self.bar, &sizes, |_, _| None);
+        let plan = column_plan(self.column, self.spec, rect, self.plan_bar(), &sizes, |_, _| None);
         if self.bar == ColumnBar::Own && self.arrow.shown() {
             let (chevron, _) = bar_slots(plan.bar, self.edge, cx.flow.is_rtl());
             let name = self.arrow.name(&cx.words::<DockWords>(), true);
@@ -423,7 +431,7 @@ impl<P: Value + Debug + Hash + 'static> Component for DockColumn<'_, P> {
         let own = self.bar == ColumnBar::Own;
         self.collapse = own && self.arrow.shown() && cx.part_activated(CHEVRON).is_some();
         let Some(base) = self.laid.take() else { return };
-        let mut plan = column_plan(self.column, self.spec, rect, self.bar, &sizes, |key, divider| divider::pointer(cx, DIVIDER, key, divider));
+        let mut plan = column_plan(self.column, self.spec, rect, self.plan_bar(), &sizes, |key, divider| divider::pointer(cx, DIVIDER, key, divider));
         let dividers = base.dividers(rect, sizes.reach);
         let keyed: Vec<(u64, Divider)> = dividers.iter().map(|(key, _, divider)| (*key, *divider)).collect();
         if let Some((key, coord)) = divider::keys(cx, DIVIDER, &keyed, sizes.step, sizes.jump)

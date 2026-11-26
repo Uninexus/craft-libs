@@ -631,6 +631,9 @@ impl<P: Clone + Hash + Send + Sync + PartialEq + Debug + 'static> Container for 
                 ui.spacing_mut().item_spacing.x = gap; // design: allow[style-mutation](the header lays its title cells with an egui layout and sets that layout's gap)
                 let shown = self.panels.as_slice().iter().find(|panel| panel.key == self.active);
                 if titled && let Some(panel) = shown {
+                    // The title starts the panel's padding in from the header's start edge (right in RTL), in line with
+                    // the body below it; flush with the edge, its first letter meets the column's frame.
+                    ui.add_space(env.tokens.space.pad.regular);
                     Text::new(panel.title.clone()).role(TypeRole::Title).show(ui);
                     if let Some(count) = panel.count {
                         let count = env.format().integer(u64::try_from(count).unwrap_or(u64::MAX));
