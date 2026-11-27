@@ -1615,6 +1615,13 @@ impl BodyHooks<'_> {
                 layout::report_beyond(ctx, std::slice::from_ref(&column), label::label_gap(env) + size.x);
             }
             *size += label_extra;
+            // A label after its control may wrap to more lines than the control is high. The control's cell spans
+            // the whole row, so the extra above doesn't see that: the row is at least as high as the label reaches.
+            let reach = plan.label_rect.max.y - plan.regions.body.min.y;
+            if props.label.as_ref().is_some_and(|side| side.layout == label::FieldLayout::After) && plan.label_rect.is_positive() && reach.is_finite()
+            {
+                size.y = size.y.max(reach);
+            }
             // A caption above the control counts whole toward the container's width, so a row never narrows the
             // field below it.
             size.x = size.x.max(plan.caption);

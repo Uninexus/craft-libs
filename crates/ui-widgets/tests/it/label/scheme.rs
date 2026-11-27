@@ -6,7 +6,7 @@ use craft_ui::contract::{Bind, FieldLayout, GlyphLabel, LabelKind, LabelScheme, 
 use craft_ui::form::{Field, FieldGroup};
 use craft_ui::testing::{Fixture, trial};
 use craft_ui::text::NumberField;
-use egui::{Rect, Ui};
+use egui::{Rect, Ui, vec2};
 
 const SHORT: &str = "Size";
 const LONG: &str = "Corner radius";
@@ -140,4 +140,25 @@ fn a_forms_check_box_row_starts_in_the_control_column() {
     let (alone, fielded, _, _, _) = check(LabelScheme::Form, false);
     assert!((alone.min.x - inspector.min.x).abs() <= SLACK, "with no labelled row the box stays at the row's start: {alone:?}");
     assert!((fielded.min.x - inspector.min.x).abs() <= SLACK, "and so does a field's: {fielded:?}");
+}
+
+/// A check box row whose label wraps takes the height of every line: the row below starts under the label's end.
+#[trial]
+fn a_wrapped_check_box_label_gets_the_height_of_all_its_lines() {
+    const WRAPPED: &str = "Restore the page, the zoom and the page display of every document when it is opened again";
+    let mut fixture = Fixture::new(|ui| {
+        ui.set_max_width(260.0);
+        Field::new(WRAPPED).layout(FieldLayout::After).show(ui, |ui, _| {
+            Checkbox::new(Bind::given(true)).show(ui);
+        });
+        Field::new("Next").layout(FieldLayout::After).show(ui, |ui, _| {
+            Checkbox::new(Bind::given(true)).show(ui);
+        });
+    });
+    fixture.room(vec2(600.0, 400.0)).settle();
+    let text = |name: &str| fixture.texts().iter().find(|run| run.text == name).map(|run| run.rect).expect("the label is painted");
+    let first = text(WRAPPED);
+    let next = fixture.by_label("Next").expect("the next row's check box").rect;
+    assert!(first.height() > text("Next").height() * 1.5, "the label wraps: {first:?}");
+    assert!(next.min.y >= first.max.y - SLACK, "the next row starts below the wrapped label: {first:?} {next:?}");
 }
