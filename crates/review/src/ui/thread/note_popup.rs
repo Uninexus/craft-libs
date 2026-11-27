@@ -269,7 +269,7 @@ const MAX_NESTING: usize = 8;
 /// changes nothing.
 const LEAST_CHANGE: f32 = 2.0;
 /// How opaque the connector wedge is: production's 90 of 255.
-const CONNECTOR_SHARE: f32 = 90.0 / 255.0;
+const CONNECTOR_ALPHA: u8 = 90;
 
 /// What a note pop-up did this pass.
 #[derive(Debug)]
@@ -372,8 +372,7 @@ impl<'a> NotePopup<'a> {
         let shown_at = drafts.placing.get(&id).copied().unwrap_or(window);
         let overlay =
             Overlay::floating().modeless().movable(allowed).resize_edges(grip).body_scroll(true).size_limits(NOTE_POPUP_LIMITS).placed(shown_at);
-        let layer = NoteWindow::new(label, overlay, NoteLook { title, age, fill }, words.close.clone(), allowed, anchor, selected)
-            .id_salt(("note-popup", id));
+        let layer = NoteWindow::new(label, overlay, NoteLook { title, age, fill }, words.close.clone(), allowed).id_salt(("note-popup", id));
         let mut content = NoteBody {
             id,
             messages,
@@ -388,6 +387,13 @@ impl<'a> NotePopup<'a> {
         let shown = layer.show(ui, |ui, _| content.show(ui, &words, &view));
         let NoteBody { drafts, mut body, reply, .. } = content;
         let out = shown.output;
+        // The connector lies between the mark and the window, outside the window's own clip: it is painted on the
+        // host's Ui, whose layer is under the window. The window counts as hovered while the pointer is over it, its
+        // children included (egui's `contains_pointer` of the topmost layer under the pointer).
+        if let Some(wedge) = connector(anchor, selected, out.response.rect, out.response.contains_pointer(), env.tokens.space.gap.inline) {
+            let faint = Color32::from_rgba_unmultiplied(r, g, b, CONNECTOR_ALPHA);
+            ui.painter().add(egui::Shape::convex_polygon(wedge.to_vec(), faint, egui::Stroke::NONE));
+        }
         let placed = drafts.settle(id, window, &out.changes);
         if out.close {
             // Close commits the typed text as a focus loss would.
@@ -527,8 +533,6 @@ struct NoteLook {
 struct NoteWindowStyle {
     #[style(metrics)]
     metrics: Metrics,
-    /// Half the width of the connector wedge's base.
-    wedge: f32,
 }
 
 /// What the note window reports: its response, Close and the placement changes of this pass.
@@ -548,7 +552,7 @@ impl Outcome for NoteWindowOutput {
 }
 
 /// The note pop-up's layer: a floating surface tinted with the note's colour, whose header is the title band (it
-/// moves the layer) with Close at its end, under which it paints the connector wedge.
+/// moves the layer) with Close at its end.
 #[derive(craft_ui::contract::Component)]
 #[component(container, unregistered)]
 struct NoteWindow {
@@ -561,35 +565,16 @@ struct NoteWindow {
     look: NoteLook,
     close_label: Label,
     allowed: bool,
-    anchor: Option<(Rect, bool)>,
-    selected: bool,
     close: bool,
     changes: Vec<PlacementChange>,
 }
 
 impl NoteWindow {
-    fn new(label: Label, overlay: Overlay, look: NoteLook, close_label: Label, allowed: bool, anchor: Option<(Rect, bool)>, selected: bool) -> Self {
+    fn new(label: Label, overlay: Overlay, look: NoteLook, close_label: Label, allowed: bool) -> Self {
         let props =
             ContainerProps::new().mount(Mount::Layer(overlay)).surface(SurfaceKind::Floating).header(HeaderRegion::new().band(DragBand::Move));
-        NoteWindow {
-            common: Common::new(),
-            props,
-            open: Bind::given(true),
-            look,
-            close_label,
-            allowed,
-            anchor,
-            selected,
-            close: false,
-            changes: Vec::new(),
-        }
-        .label(label)
-    }
-
-    /// The wedge this pass, for the window at `response`'s rect: the window counts as hovered while the pointer is
-    /// over it, its children included (egui's `contains_pointer` of the topmost layer under the pointer).
-    fn wedge(&self, response: &Response, half: f32) -> Option<[Pos2; 3]> {
-        connector(self.anchor, self.selected, response.rect, response.contains_pointer(), half)
+        NoteWindow { common: Common::new(), props, open: Bind::given(true), look, close_label, allowed, close: false, changes: Vec::new() }
+            .label(label)
     }
 }
 
@@ -600,22 +585,15 @@ impl Component for NoteWindow {
     type Style = NoteWindowStyle;
     type Output = NoteWindowOutput;
 
-    fn style(cx: &StyleCx<'_>, _: NoteWindowStyleKey) -> NoteWindowStyle {
-        NoteWindowStyle { metrics: Metrics::new(), wedge: cx.tokens.space.gap.inline }
+    fn style(_: &StyleCx<'_>, _: NoteWindowStyleKey) -> NoteWindowStyle {
+        NoteWindowStyle { metrics: Metrics::new() }
     }
 
     fn sense(&self) -> Sense {
         Sense::HOVER
     }
 
-    /// The body's tint over the surface, and the connector wedge, under the body.
-    fn paint(&mut self, ui: &mut PaintUi<'_>, cx: &Cx<'_, Self>) {
-        let draw = ui.draw();
-        let fill = self.look.fill;
-        if let Some(wedge) = self.wedge(&cx.response, cx.style.wedge) {
-            draw.faded(CONNECTOR_SHARE, |draw| draw.data_fill(&PaintShape::Polygon(wedge.to_vec()), fill));
-        }
-    }
+    fn paint(&mut self, _: &mut PaintUi<'_>, _: &Cx<'_, Self>) {}
 
     fn finish(self, cx: Cx<'_, Self>) -> NoteWindowOutput {
         NoteWindowOutput { response: cx.response.clone(), close: self.close, changes: self.changes }

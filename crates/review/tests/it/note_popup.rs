@@ -102,7 +102,7 @@ impl NoteHost {
 }
 
 /// Hovering the mark or the window and selecting the note leave the window where it is and report no placement; the
-/// connector is painted by the window itself and is covered by the stories.
+/// connector has its own test.
 #[trial]
 fn hovering_the_mark_or_window_or_selecting_the_note_reports_no_placement() {
     let host = NoteHost::new(Rect::from_min_size(pos2(400.0, 300.0), vec2(240.0, 160.0)));
@@ -428,4 +428,20 @@ fn a_flat_reply_edge_takes_the_notes_colour() {
     let edge = egui::Color32::from_rgb(83, 90, 216);
     let around = seen.iter().filter(|(rect, _)| (rect.center() - reply.center()).length() < 2.0).collect::<Vec<_>>();
     assert!(around.iter().any(|(_, color)| *color == edge), "the Reply {reply:?} is edged in the note's colour {edge:?}: {around:?}");
+}
+
+/// The connector wedge reaches the mark: its end there is inside the clip it is painted with, so it shows on screen.
+#[trial]
+fn the_connector_wedge_is_painted_where_the_mark_is() {
+    let host = NoteHost::new(Rect::from_min_size(pos2(400.0, 300.0), vec2(240.0, 160.0)));
+    host.selected.set(true);
+    let mut fixture = NoteHost::fixture(&host);
+    let (mark, window) = (host.mark.get(), host.window.get());
+    assert!(!mark.intersects(window), "the window shows apart from the mark: {mark:?}, {window:?}");
+    // The wedge is the filled triangle with a corner on the mark.
+    let seen = fixture.frame_clipped_shapes().into_iter().any(|(clip, shape)| match shape {
+        egui::Shape::Path(path) if path.points.len() == 3 => path.points.iter().any(|p| mark.expand(SLACK).contains(*p) && clip.contains(*p)),
+        _ => false,
+    });
+    assert!(seen, "a wedge shows from the mark {mark:?}");
 }
