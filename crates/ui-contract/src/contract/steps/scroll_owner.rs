@@ -84,6 +84,16 @@ pub fn scroll_step(ctx: &Context, owner: Id, view: Rect, units: &[Rect], right: 
     true
 }
 
+/// Asks the scrolling body around `ui` to show `rect`, by the least move that does, at its next pass: for an app that
+/// just added something below what the body shows. Returns whether there is a scrolling body around `ui`.
+pub fn reveal_rect(ui: &egui::Ui, rect: Rect) -> bool {
+    let Some(view) = crate::runtime::env::Env::of(ui).view().lazy_view() else { return false };
+    let owner = view.owner;
+    pass_state::with::<Reveals, _>(ui.ctx(), |reveals| reveals.0.push(Reveal { owner, to: RevealTo::Rect(rect) }));
+    repaint::request(ui.ctx());
+    true
+}
+
 /// Queues a reveal request for `owner`.
 #[cfg(feature = "testing")]
 pub(crate) fn queue_reveal(ctx: &Context, owner: Id, rect: Rect) {

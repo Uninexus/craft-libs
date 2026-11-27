@@ -548,3 +548,26 @@ fn the_paper_stands_inset_in_the_preview_well() {
     assert!(paper.left() > room.left() + 2.0 && room.right() > paper.right() + 2.0, "the well shows beside the sheet: {room:?} {paper:?}");
     assert!(paper.top() > room.top() + 2.0 && room.bottom() > paper.bottom() + 2.0, "the well shows above and below the sheet: {room:?} {paper:?}");
 }
+
+/// A row the app asks the dialog to reveal is scrolled into view, where the setup column is higher than the dialog.
+#[trial]
+fn a_revealed_row_is_scrolled_into_view() {
+    let rows = (0..30).map(|i| Param::new(format!("row{i}"), Label::from(format!("Row {i}")), ParamKind::bool(false))).collect();
+    let mut dialog = HostedPrint::new(State::default(), DialogFields::default(), vec![PrintSection::new("Rows", rows)]).layout(PrintLayout::Document);
+    dialog.set_sheet(PrintSheet::message(vec2(595.0, 842.0), "No preview".into(), "".into()));
+    let host = Rc::new(RefCell::new(DialogHost::new()));
+    host.borrow_mut().open(dialog);
+    let shown = host.clone();
+    let mut fixture = Fixture::new(move |ui| {
+        shown.borrow_mut().run(ui);
+    });
+    fixture.room(vec2(900.0, 500.0));
+    fixture.idle(10);
+    let last = |fixture: &Fixture| fixture.by_label("Row 29").map(|node| node.rect);
+    let print = fixture.by_label("Cancel").expect("the dialog's buttons").rect;
+    assert!(last(&fixture).is_none_or(|row| row.max.y > print.min.y), "the last row starts out of view: {:?}", last(&fixture));
+    on_print(&host, |dialog| dialog.reveal_row("row29"));
+    fixture.idle(20);
+    let row = last(&fixture).expect("the last row is shown");
+    assert!(row.max.y <= print.min.y, "the row is above the buttons: {row:?} {print:?}");
+}

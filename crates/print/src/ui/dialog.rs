@@ -745,6 +745,8 @@ pub struct PrintDialog<'a> {
     /// Shows the reason under the rows while the settings and the values are the refused ones.
     #[prop(vis = "pub(crate)")]
     refusal: Option<(Label, Settings, DialogFields)>,
+    /// The key of a row to scroll into view in this pass.
+    reveal: Option<&'a str>,
 }
 
 /// What [`PrintDialog::show`] returns.
@@ -808,7 +810,15 @@ impl<'a> PrintDialog<'a> {
             hold_ok: false,
             finish_held: false,
             refusal: None,
+            reveal: None,
         }
+    }
+
+    /// Scrolls the section holding the row keyed `key` into view in this pass, as little as shows it: for a row that
+    /// just appeared below what the dialog shows.
+    pub fn reveal(mut self, key: Option<&'a str>) -> Self {
+        self.reveal = key;
+        self
     }
 
     /// Draws the dialog. The body reports the drag events, the Refresh, pager and section button presses and the
@@ -834,6 +844,7 @@ impl<'a> PrintDialog<'a> {
             hold_ok,
             finish_held,
             refusal,
+            reveal,
         } = self;
         let env = Env::of(ui);
         let words = env.words::<PrintDialogWords>();
@@ -903,7 +914,12 @@ impl<'a> PrintDialog<'a> {
                     Section::fixed(words.printer_setup.clone()).id_salt("printer").show(ui, |ui, _| printer(ui));
                 }
                 for (at, section) in sections.iter().enumerate() {
+                    let top = ui.cursor().min;
                     section.show(ui, at, document, values, requests);
+                    if reveal.is_some_and(|key| section.params.iter().any(|param| param.key == key)) {
+                        let bottom = ui.min_rect().max;
+                        craft_ui::contract::reveal_rect(ui, egui::Rect::from_min_max(top, egui::pos2(bottom.x.max(top.x), bottom.y.max(top.y))));
+                    }
                 }
             };
             // The sheet preview, the pager under it in the `Document` layout, the readout and the notes.
@@ -1021,6 +1037,8 @@ pub struct HostedPrint {
     /// The app's say on whether the settings can print (a page range that names no page cannot): Print is disabled while
     /// it is false, on top of the state's own readiness.
     settings_valid: bool,
+    /// A row the app asked to see, not scrolled to yet.
+    reveal: Option<String>,
 }
 
 /// Adds the app's own keys to the automation listing of the sections' values.
@@ -1050,7 +1068,13 @@ impl HostedPrint {
             hold: false,
             held: HeldAnswer::new(),
             settings_valid: true,
+            reveal: None,
         }
+    }
+
+    /// Scrolls the row keyed `key` into view the next time the dialog shows: for a row the app just added.
+    pub fn reveal_row(&mut self, key: impl Into<String>) {
+        self.reveal = Some(key.into());
     }
 
     /// Tells the dialog whether the settings the app owns are valid (they are until told otherwise). While they are not,
@@ -1263,7 +1287,8 @@ impl StackDialog for HostedPrint {
             .duplex_by_layout(self.duplex_by_layout)
             .printer_search(self.printer_search)
             .hold_ok(self.hold)
-            .finish_held(finish_held);
+            .finish_held(finish_held)
+            .reveal(self.reveal.as_deref());
         if let Some(pager) = self.preview_pager.clone() {
             dialog = dialog.preview_pager(pager);
         }
@@ -1271,6 +1296,10 @@ impl StackDialog for HostedPrint {
             dialog = dialog.refusal(refusal);
         }
         let shown = dialog.show(ui);
+        // A measuring run scrolls nothing: the request is spent by the run that is painted.
+        if !craft_ui::runtime::measure::active(ui.ctx()) {
+            self.reveal = None;
+        }
         let PrintDialogOutput { closed, finish, moved, refresh, settings_clicked, paper_px, requests, printer_chosen, held, .. } = shown;
         self.moves.extend(moved);
         if paper_px.is_some() {
