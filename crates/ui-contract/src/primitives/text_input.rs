@@ -43,7 +43,8 @@ pub enum TabKey {
     Moves,
     /// Tab inserts a tab.
     Inserts,
-    /// Tab and Shift+Tab rewrite the draft (the text part selects it and refuses).
+    /// Tab and Shift+Tab rewrite a draft typed since the last rewrite (the text part selects it and refuses); with none,
+    /// they move focus.
     Rewrites,
     /// Tab keeps focus and is handed back as `EditResponse::tab`: `Some(true)` for Tab, `Some(false)` for Shift+Tab.
     Reports,

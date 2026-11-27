@@ -21,7 +21,8 @@ const MESSAGE_DECIMALS: usize = 2;
 ///
 /// - Typing takes digits, `-`, `/` and the decimal separator: `a/b` is the zoom `a ÷ b × 100` %. Non-positive
 ///   entries are rejected; a second separator applies the number before it and reports [`InvalidZoom`].
-/// - Tab writes the typed number in the field's own form and selects it; focus stays and nothing applies.
+/// - Tab writes a number typed since the last Tab in the field's own form and selects it; focus stays and nothing
+///   applies. With nothing typed since, Tab and Shift+Tab move focus on, so the field never holds the keyboard.
 /// - A press on a part declared `holds_drafts` (the pasteboard, the title bar) keeps the typed zoom unapplied; the
 ///   next Enter applies it.
 #[derive(crate::contract::Pattern)]

@@ -64,6 +64,9 @@ pub(crate) struct TextState {
     pub seen: Option<Arc<dyn Any + Send + Sync>>,
     /// The draft changed since the typing run last read it.
     pub dirty: bool,
+    /// Text was typed since a `TabKey::Rewrites` part last wrote its draft in the field's own form: its Tab still has
+    /// that to do. With nothing to rewrite its Tab moves the focus.
+    pub unwritten: bool,
     pub end: Option<End>,
     /// The modifiers of the Enter that ended the run with `End::Submit`.
     pub submit_mods: Mods,
@@ -102,9 +105,22 @@ pub(crate) fn text_id(id: Id, key: PartKey) -> Id {
 /// them again. The selection is the one the part acts on: `held`, the one it kept while its edit menu has the focus
 /// (egui collapses the selection of a widget without focus), else its widget's. `text` is the part's current text, which
 /// the widget's undo steps are judged against.
-pub(crate) fn keys_of(ctx: &Context, widget: Id, held: Option<(usize, usize)>, text: &str, base: KeyUse, options: &TextOptions) -> KeyUse {
-    // A part whose Tab inserts, rewrites or reports keeps Tab, so the focus service never moves focus on it.
-    let keys = if options.tab != TabKey::Moves {
+pub(crate) fn keys_of(
+    ctx: &Context,
+    widget: Id,
+    held: Option<(usize, usize)>,
+    (text, unwritten): (&str, bool),
+    base: KeyUse,
+    options: &TextOptions,
+) -> KeyUse {
+    // A part whose Tab inserts or reports keeps Tab, so the focus service never moves focus on it; one whose Tab rewrites
+    // keeps it while there is typing to rewrite.
+    let keeps_tab = match options.tab {
+        TabKey::Moves => false,
+        TabKey::Rewrites => unwritten,
+        _ => true,
+    };
+    let keys = if keeps_tab {
         base.with_keep(KeepKeys::Tab)
     } else if options.multiline() {
         base.with_keep(KeepKeys::BlockArrows)
@@ -511,7 +527,7 @@ pub(crate) fn run(state: &mut TextState, mut input: AdapterIn<'_>) -> AdapterOut
     let mut tab = None;
     if input.focused && state.preedit.is_none() {
         match input.options.tab {
-            TabKey::Rewrites if !input.read_only => {
+            TabKey::Rewrites if !input.read_only && state.unwritten => {
                 if egui_input::take_tab(ctx).is_some() {
                     state.end = Some(End::Rewrite { refuses: true });
                 }
@@ -584,6 +600,7 @@ pub(crate) fn run(state: &mut TextState, mut input: AdapterIn<'_>) -> AdapterOut
     if typed || edited {
         state.draft = Some(if typed { display.clone() } else { base });
         state.dirty = true;
+        state.unwritten = true;
         state.caret_moved = input.now;
     }
     let caret = text_edit::selection(ctx, widget).map(|selection| selection.0);

@@ -41,6 +41,12 @@ pub(crate) fn draft(memory: &mut MemoryStage, id: egui::Id) -> Option<String> {
     memory.shown::<TextState>(state_id(id)).draft.clone()
 }
 
+/// Whether the text part of the component `id` holds typing a `TabKey::Rewrites` Tab has not rewritten yet.
+pub(crate) fn unwritten(memory: &mut MemoryStage, id: egui::Id) -> bool {
+    let state = memory.shown::<TextState>(state_id(id));
+    state.unwritten && state.draft.is_some()
+}
+
 /// Whether a scrubbing field was in edit before the press that is now down: a press that becomes a drag scrubs and
 /// leaves edit as it found it, and only a click without travel enters it.
 #[derive(Clone, Default)]
@@ -224,6 +230,7 @@ fn resolver<K: Codec + Clone + 'static>(codec: K, options: &TextOptions, rect: R
                 }
             }
             Some(End::Rewrite { refuses }) => {
+                state.unwritten = false;
                 rewritten = typing.rewrite(&mut run);
                 refused |= refuses;
             }

@@ -15,15 +15,15 @@ use crate::contract::cx::{BodyCx, CxCore, Pointer as _};
 use crate::contract::run::{Measuring, ShapeHooks, ShowAt};
 use crate::contract::steps::ShapeKind;
 use crate::contract::{Bind, Collection, Cx, Internal, ItemCx, ItemOutput as _, PartsCx, Props, Show as _, Sizing};
-use crate::primitives::{AutoScrollMark, HiddenContent, ScrollBar, SurfaceSlot};
+use crate::primitives::{AutoScrollMark, FocusKind, FocusRing, HiddenContent, PaintShape, ScrollBar, SurfaceSlot};
 use crate::runtime::access::{self, Role};
 use crate::runtime::egui::{alloc, areas, child, response};
 use crate::runtime::env::WheelScope;
 use crate::runtime::env::{AppValues, ArenaId, Env, ItemFacts, ThemeScope};
 use crate::runtime::memory::{MemoryStage, sub};
 use crate::runtime::{focus, keys, layout_memory, lazy, overlay, wheel};
-use crate::style::auto_scroll_mark_look;
 use crate::style::{ComponentStyle as _, SurfaceKind, UiTokens, scroll_bar_look, surface_style};
+use crate::style::{FocusLook, auto_scroll_mark_look, rgba_color};
 use craft_behavior::{
     Axis, Buttons, CancelReason, EditEvent, Intent, ItemLayout, MiddleButton, MiddleScroll, Mixed, MoveMods, NavMove, PointerButton, PressPhase,
     Proposal, ScrollPos, ScrollSpan, SelectionModel, Sense, WheelRoom, WheelTaker,
@@ -678,6 +678,15 @@ impl<C: Collection> ShapeHooks<C> for ItemsHooks<'_, '_, C> {
                     access::set_focus(&ctx, crate::runtime::access::items::focus_node(item_id, lead_child, cell));
                 }
             }
+        }
+        // A focused collection with no lead row has nothing else to show where the keyboard is: it is ringed itself,
+        // inside its own rect so that a clipping parent keeps the ring.
+        if focused && lead.as_ref().and_then(|key| self.index_of(key)).is_none() && focus::focus_visible(&ctx, id) {
+            let width = env.tokens.stroke.focus;
+            let look = FocusLook::new(egui::Stroke::new(width, rgba_color(env.tokens.color.line.focus)), 0.0);
+            let outline = PaintShape::Rect(cx.core.rect.shrink(width), egui::CornerRadius::ZERO);
+            let ppp = crate::runtime::egui::scale::pixels_per_point(&ctx);
+            ui.painter().extend(FocusRing::shapes(&look, FocusKind::Ring, &outline, ppp));
         }
         if self.source.is_empty() {
             let mut open = true;

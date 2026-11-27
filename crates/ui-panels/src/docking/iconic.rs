@@ -16,8 +16,8 @@ use crate::contract::{
 use crate::menu::GroupItem;
 use crate::primitives::{IconSpec, TextRun};
 use crate::runtime::env::Label;
-use crate::runtime::focus::KeyUse;
-use crate::style::{ComponentStyle, Corners, GlyphRole, StyleColor, StyleCx, SurfaceKind};
+use crate::runtime::focus::{ActivateKeys, KeyUse};
+use crate::style::{ComponentStyle, Corners, FocusLook, GlyphRole, StyleColor, StyleCx, SurfaceKind};
 use craft_behavior::dock::{Column, DockEdge, Group};
 use craft_behavior::overlay::Side;
 use craft_behavior::{Axis, CursorIcon, DockSide, Metrics, PartKey, PressPhase, Sense, Value};
@@ -154,6 +154,9 @@ impl<P: Value + Hash + 'static> Outcome for IconicColumnOutput<P> {
 pub struct IconicColumnStyle {
     #[style(metrics)]
     metrics: Metrics,
+    /// The ring of the focused icon.
+    #[style(focus)]
+    focus: FocusLook,
     sizes: IconicSizes,
     /// The ink of a panel's name in a wide column.
     name: StyleColor,
@@ -455,7 +458,8 @@ type FlyoutView<'a, P> = Box<dyn FnMut(&Group<P>, GroupAt, &mut Ui, &mut BodyCx<
 
 impl<P: Value + Hash + Debug + 'static> Component for IconicColumn<'_, P> {
     const ROLE: Role = Role::GROUP;
-    const KEYS: KeyUse = KeyUse::SPLITTER;
+    /// The splitter's keys for the column's edge, and Enter and Space to press the focused icon as a click does.
+    const KEYS: KeyUse = KeyUse::SPLITTER.with_activate(ActivateKeys::Both);
     type Style = IconicColumnStyle;
     type Output = IconicColumnOutput<P>;
 
@@ -468,6 +472,7 @@ impl<P: Value + Hash + Debug + 'static> Component for IconicColumn<'_, P> {
         let colors = &cx.tokens.color;
         IconicColumnStyle {
             metrics: Metrics::new(),
+            focus: cx.focus_look(),
             sizes: IconicSizes::style(cx),
             name: cx.color(colors.text.normal),
             name_open: cx.color(colors.accent.text),

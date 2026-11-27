@@ -374,3 +374,29 @@ fn rail_width_zoom_shows_its_whole_value() {
         assert!(!run.elided && run.clip.contains_rect(run.rect), "{text} must be visible: {run:?}");
     }
 }
+
+/// Tab moves on from the field once there is nothing left to rewrite: at once from an untouched field, and on the
+/// second press after typing, whose first rewrites the number.
+#[trial]
+fn tab_moves_on_from_the_zoom_field_after_rewriting() {
+    for modifiers in [Modifiers::NONE, Modifiers::SHIFT] {
+        let (mut fixture, _) = focused(false, true);
+        let field = fixture.focused_stop();
+        assert!(field.is_some(), "Tab focuses the zoom field");
+        fixture.key(Key::Tab, modifiers);
+        fixture.settle();
+        assert_ne!(fixture.focused_stop(), field, "an untouched field lets Tab go: {modifiers:?}");
+
+        let (mut fixture, _) = focused(false, true);
+        let field = fixture.focused_stop();
+        fixture.type_text("045");
+        fixture.settle();
+        fixture.key(Key::Tab, modifiers);
+        fixture.settle();
+        assert_eq!(fixture.focused_stop(), field, "the first press rewrites: {modifiers:?}");
+        assert_eq!(text(&fixture), "45");
+        fixture.key(Key::Tab, modifiers);
+        fixture.settle();
+        assert_ne!(fixture.focused_stop(), field, "the next one moves on: {modifiers:?}");
+    }
+}

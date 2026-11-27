@@ -7,7 +7,7 @@ use craft_ui::display::Text;
 use craft_ui::docking::{DockConfig, DockGrid, DockHeights, DockPanels, DockSizes, GroupSize, IconicMode, PanelSpec, PanelSpecs, group_heights};
 use craft_ui::patterns::dock::DockArea;
 use craft_ui::testing::{Fixture, pointer, trial};
-use egui::{Pos2, Rect, Ui, Vec2};
+use egui::{Key, Modifiers, Pos2, Rect, Ui, Vec2};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -416,6 +416,59 @@ fn rail_icons_stay_beside_the_expanded_column_and_the_open_panels_icon_collapses
     fixture.click(&alpha).settle();
     assert!(iconic(), "the icon of the panel in front collapses the column");
     assert!(!shown(&fixture, "Alpha body"), "and its panel no longer shows");
+}
+
+/// A rail icon is a Tab stop that Enter and Space press as a click does, and the focused one shows a ring.
+#[trial]
+fn rail_icons_press_by_enter_and_space_and_show_focus() {
+    let side = Column::new(vec![Group::new(vec![10, 11], 0)]).with_iconic(true);
+    let root = Node::split(Axis::X, SplitSize::Ratio(0.6), Node::tabs(vec![1], 0), Node::dock(DockEdge::End, vec![side]));
+    let workspace = Rc::new(RefCell::new(Arc::new(Workspace::new(Layout::new(Some(root), Vec::new())))));
+    let (held, specs) = (Rc::clone(&workspace), Tracked::new(Sides));
+    let mut fixture = Fixture::new(move |ui| {
+        let mut workspace = Arc::clone(&held.borrow());
+        let config = DockConfig::default().iconic_mode(IconicMode::Rail);
+        let out = DockArea::new("Rail dock", Bind::given(Arc::clone(&workspace)), &specs, &mut Sides, config).show(ui);
+        for action in out.actions {
+            drop(Arc::make_mut(&mut workspace).apply(action, false, |_: &u32| Permissions::ALL));
+        }
+        *held.borrow_mut() = workspace;
+    });
+    fixture.room(Vec2::new(900.0, 500.0)).settle();
+    let iconic = || end_columns(workspace.borrow().layout())[0].iconic;
+    let shown = |fixture: &Fixture, text: &str| fixture.texts().iter().any(|run| run.text == text);
+    let focused = |fixture: &Fixture| {
+        let tree = fixture.tree();
+        craft_ui::testing::access::name(tree, craft_ui::testing::access::focused_key(tree)).map(str::to_owned)
+    };
+    let tab_to = |fixture: &mut Fixture, name: &str| {
+        for _ in 0..20 {
+            fixture.key(Key::Tab, Modifiers::NONE).settle();
+            if focused(fixture).as_deref() == Some(name) {
+                return;
+            }
+        }
+        panic!("Tab never reached the {name} icon");
+    };
+
+    // The outlines painted about the Beta icon: stroked rects no further from its edges than a ring stands.
+    let outlines = |fixture: &mut Fixture| {
+        let icon = {
+            let tree = fixture.tree();
+            fixture.by_role(Role::BUTTON).into_iter().find(|b| craft_ui::testing::access::name(tree, b.node) == Some("Beta")).expect("Beta").rect
+        };
+        let about = |rect: Rect| icon.expand(6.0).contains_rect(rect) && rect.expand(6.0).contains_rect(icon);
+        fixture.frame_shapes().iter().filter(|shape| matches!(shape, egui::Shape::Rect(r) if r.stroke.width > 0.0 && about(r.rect))).count()
+    };
+    let unfocused = outlines(&mut fixture);
+    tab_to(&mut fixture, "Beta");
+    assert!(outlines(&mut fixture) > unfocused, "the focused icon paints a ring");
+    fixture.key(Key::Enter, Modifiers::NONE).settle();
+    assert!(!iconic(), "Enter expands the column");
+    assert!(shown(&fixture, "Beta body"), "with the focused panel in front");
+    tab_to(&mut fixture, "Alpha");
+    fixture.key(Key::Space, Modifiers::NONE).settle();
+    assert!(shown(&fixture, "Alpha body") && !shown(&fixture, "Beta body"), "Space switches the panel in front");
 }
 
 #[derive(PlainData)]
