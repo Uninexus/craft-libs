@@ -144,7 +144,8 @@ impl Component for Dialog<'_> {
                 Arm::Gesture(gesture) => body.pass_canvas_gesture(canvas, gesture),
             }
             if let Some(value) = scene.field.borrow_mut().as_mut() {
-                NumberField::new("Amount", Bind::bound(value)).show(ui);
+                let shown = NumberField::new("Amount", Bind::bound(value)).show(ui);
+                scene.field_at.set(shown.response.rect.center());
             }
             let leaf = Leaf::new(&scene.leaf, Vec2::new(80.0, 30.0)).id_salt("armer").show(ui);
             scene.armer_id.set(leaf.id);
@@ -172,6 +173,8 @@ struct Scene {
     tool: Cell<Option<CanvasGesture>>,
     /// The value of a number field the dialog shows first, so it takes the dialog's first focus.
     field: RefCell<Option<Option<f64>>>,
+    /// Where that field showed last.
+    field_at: Cell<Pos2>,
     dialog: Opened,
 }
 
@@ -186,6 +189,7 @@ impl Scene {
             outside: Cell::new(None),
             tool: Cell::new(None),
             field: RefCell::new(None),
+            field_at: Cell::new(Pos2::ZERO),
             dialog: Opened::default(),
         }
     }
@@ -308,8 +312,8 @@ fn a_kept_view_passes_the_wheel_and_the_middle_pan_and_blocks_the_primary_press(
     assert!(scene.canvas.borrow().wheels == 0 && !scene.took(PointerButton::Middle), "the canvas is blocked");
 }
 
-/// A focused field in the dialog takes the wheel wherever the pointer is in the dialog, but over the canvas the dialog
-/// keeps open the wheel goes by position: the canvas scrolls and the field keeps its value.
+/// A focused field in the dialog takes the wheel only while the pointer is over it: elsewhere in the dialog it keeps its
+/// value, and over the canvas the dialog keeps open the canvas scrolls.
 #[trial]
 fn the_wheel_over_a_kept_canvas_scrolls_it_while_a_field_in_the_dialog_has_focus() {
     let mut frames = Frames::new();
@@ -320,8 +324,14 @@ fn the_wheel_over_a_kept_canvas_scrolls_it_while_a_field_in_the_dialog_has_focus
     scene.frame(&mut frames, vec![moved(in_dialog)]);
     scene.frame(&mut frames, vec![wheel(-40.0)]);
     scene.settle(&mut frames, 2);
+    assert_eq!(*scene.field.borrow(), Some(Some(5.0)), "away from the focused field the wheel leaves it");
+    frames.advance(2.0);
+    scene.settle(&mut frames, 2);
+    scene.frame(&mut frames, vec![moved(scene.field_at.get())]);
+    scene.frame(&mut frames, vec![wheel(-40.0)]);
+    scene.settle(&mut frames, 2);
     let stepped = *scene.field.borrow();
-    assert_ne!(stepped, Some(Some(5.0)), "the focused field takes the wheel away from it");
+    assert_ne!(stepped, Some(Some(5.0)), "over the focused field the wheel steps it");
     frames.advance(2.0);
     scene.settle(&mut frames, 2);
     scene.frame(&mut frames, vec![moved(CANVAS.center())]);

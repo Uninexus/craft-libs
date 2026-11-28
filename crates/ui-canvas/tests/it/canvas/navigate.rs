@@ -721,13 +721,20 @@ fn a_held_alt_key_is_in_the_wheels_modifiers_when_the_wheel_events_miss_it() {
 }
 
 #[trial]
-fn a_focused_field_takes_the_plain_wheel_over_the_canvas_and_leaves_it_the_view_keys() {
+fn a_focused_field_takes_the_plain_wheel_only_under_the_pointer() {
     let (mut fixture, view, number, _) = wheel_rig(Platform::Linux, NavigationOptions::default());
     let field = fixture.by_label("Smoothing").expect("the number field");
     fixture.click(&field);
     let before = view.get();
     wheel_line(&mut fixture, &view, 1.0, Modifiers::NONE);
-    assert_eq!(view.get(), before, "the canvas neither pans nor zooms");
+    assert_ne!(view.get().center, before.center, "over the canvas the wheel pans it");
+    assert_eq!(number.get(), Some(10.0), "and leaves the focused field");
+    let before = view.get();
+    let over = fixture.by_label("Smoothing").expect("the number field").rect.center();
+    fixture.frame(vec![pointer::moved(over)]);
+    fixture.frame(vec![line_event(1.0, Modifiers::NONE)]);
+    fixture.settle();
+    assert_eq!(view.get(), before, "over the field the canvas neither pans nor zooms");
     assert_eq!(number.get(), Some(11.0), "the field stepped");
     wheel_line(&mut fixture, &view, 1.0, Modifiers::ALT);
     assert!(view.get().zoom > before.zoom, "Alt + wheel is still the view's zoom");

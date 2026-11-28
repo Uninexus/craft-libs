@@ -343,7 +343,7 @@ pub struct WheelTaker<O> {
     /// A zoom zone: a vertical wheel over it goes to the innermost enclosing open taker of the zoom share, with
     /// `Wheel::zooms` set. A zone that takes no axis itself never takes a share.
     pub zooms_view: bool,
-    /// A value field: while it holds key focus it takes the field's share of the wheel wherever the pointer is
+    /// A value field: while it holds key focus and the pointer is over it, it takes the field's share of the wheel
     /// (`split`).
     pub field: bool,
     /// A value control (a slider, a field, a closed select), in any wheel scope: when a gesture it owns ends by the
@@ -562,10 +562,12 @@ const fn scroll_only(wheel: Wheel) -> Wheel {
     Wheel { zoom: 1.0, touch_zoom: 1.0, rotation: 0.0, touch_rotation: 0.0, zooms: false, ..wheel }
 }
 
-/// The split rule. A focused field (a `WheelTaker::field` taker that holds `focus`, or an app's own text field) takes
-/// the field's share of the scroll wherever the pointer is, except over another layer that goes by position (a popup
-/// opened above it, the canvas its modal dialog keeps open: `WheelFocus::by_position`): a vertical or Shift wheel without Alt or Cmd/Ctrl; an app's field reads it itself, so
-/// no taker gets it. A running `gesture` (an event at `now` less than [`GESTURE_GAP`] after
+/// The split rule. A focused field (a `WheelTaker::field` taker that holds `focus`) takes the field's share of the
+/// scroll while the pointer is over it: a vertical or Shift wheel without Alt or Cmd/Ctrl. With the pointer elsewhere the
+/// wheel goes by position, so scrolling the panel or dialog around the field does not change its value. An app's own
+/// text field takes that share wherever the pointer is; it reads it itself, so no taker gets it. Neither takes it over
+/// another layer that goes by position (a popup opened above it, the canvas its modal dialog keeps open:
+/// `WheelFocus::by_position`). A running `gesture` (an event at `now` less than [`GESTURE_GAP`] after
 /// its last one, inside its device phase) keeps the taker it started on: each scroll axis that taker takes goes to it
 /// wherever the pointer is, and the rest by position to a taker that is no value control (`WheelTaker::value`), so a
 /// control the pointer passes over does not take the scroll over. A value control that is not the focused field keeps
@@ -594,7 +596,9 @@ pub fn split<O: Copy + PartialEq>(
     if !running {
         *gesture = WheelGesture::default();
     }
-    let field = focus.taker.filter(|focused| !focus.by_position && takers.iter().any(|taker| taker.field && taker.owner == *focused));
+    let field = focus
+        .taker
+        .filter(|focused| !focus.by_position && takers.iter().any(|taker| taker.field && taker.owner == *focused && taker.rect.contains(at)));
     let app_field = focus.app_field && !focus.by_position;
     // A value control keeps its gesture only while the pointer is over it: once the pointer leaves, the gesture goes
     // on by position as a running one (value controls excluded) and the control hears its end now, so its edit run
@@ -741,16 +745,20 @@ mod tests {
     }
 
     #[test]
-    fn a_focused_field_takes_the_plain_wheel_wherever_the_pointer_is() {
+    fn a_focused_field_takes_the_plain_wheel_only_under_the_pointer() {
         let canvas = WheelTaker::new(1u8, rect(300.0)).horizontal(true).vertical(true).zoom(true);
         let field = WheelTaker::new(2u8, Rect::from_min_size(pos2(400.0, 0.0), Vec2::splat(20.0))).vertical(true).gated(true).field(true);
         let at = pos2(10.0, 10.0);
-        let owners = |wheel: Wheel, focus: WheelFocus<u8>| {
+        let over = pos2(405.0, 5.0);
+        let split_from = |at: Pos2, wheel: Wheel, focus: WheelFocus<u8>| {
             split(&[canvas, field], at, wheel, focus, None, &mut WheelGesture::default(), 0.0).iter().map(|(o, _)| *o).collect::<Vec<_>>()
         };
+        let owners = |wheel: Wheel, focus: WheelFocus<u8>| split_from(at, wheel, focus);
         let focused = WheelFocus::new(Some(2));
         assert_eq!(owners(wheel(0.0, 5.0), WheelFocus::new(None)), [1], "no focus: the canvas under the pointer");
-        assert_eq!(owners(wheel(0.0, 5.0), focused), [2], "the focused field, away from the pointer");
+        assert_eq!(owners(wheel(0.0, 5.0), focused), [1], "away from the focused field: the canvas under the pointer");
+        assert_eq!(split_from(over, wheel(0.0, 5.0), focused), [2], "over the focused field");
+        assert_eq!(split_from(over, wheel(0.0, 5.0), WheelFocus::new(None)), [] as [u8; 0], "an unfocused field takes nothing");
         let alt = Wheel { mods: Mods::ALT, ..wheel(0.0, 5.0) };
         let cmd = Wheel { mods: Mods::CMD, ..wheel(0.0, 5.0) };
         assert_eq!(owners(alt, focused), [1], "Alt stays the view's");
